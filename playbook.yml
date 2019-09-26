@@ -1,5 +1,34 @@
 ---
 - hosts: all
+  vars:
+    - ansible_python_interpreter: /usr/bin/python2
   become: true
+  pre_tasks:
+    # CentOS 7.7 is out, but the box is not updated yet
+    - yum: name='*' state=latest
+    # for zchunk-devel
+    - yum: name=epel-release
+      when: ansible_distribution == 'CentOS' or ansible_distribution == 'Red Hat'
   roles:
     - pulp-rpm-prerequisites
+  tasks:
+    # dependencies of pypi createrepo_c 0.14.2
+    - yum: name=ninja-build
+    # modulemd doesn't show up in pip. We could do the workaround for createrepo_c:
+    # https://raw.githubusercontent.com/kontura/createrepo_c/9d1c3ffd166d40b25ca6c8209759d1ecdf6d6090/utils/setup_for_python_metadata.py
+    # - yum: name=python36-libmodulemd2
+    # So instead, install the C headers
+    - yum: name=libmodulemd2-devel
+    - yum: name=doxygen
+
+    # Now that python3 is installed
+    - set_fact: ansible_python_interpreter=/usr/bin/python3
+    - meta: reset_connection
+    - setup:
+
+    # dependencies of pypi createrepo_c 0.14.2
+    - pip: name=scikit-build
+    - pip: name=nose
+
+    # Pulls in createrepo_c 0.14.2, pulpcore & pulpcore-plugin
+    - pip: name=pulp-rpm
