@@ -1,0 +1,126 @@
+---
+- hosts: all
+  vars:
+    pulp_install_dir: /usr/local/lib/pulp/
+    pulp_python_interpreter: /usr/bin/python3
+    pulp_version: /usr/local/lib/pulp/pulpcore_version.txt
+    pulp_install_plugins:
+      pulp_file:
+        source_dir: "git+https://github.com/pulp/pulp_file.git@0.1#egg=pulp-file"
+#        source_dir: "git+https://github.com/mikedep333/pulp_file.git@5890-test#egg=pulp-file"
+    pulp_source_dir: "git+https://github.com/pulp/pulpcore.git@master#egg=pulpcore"
+    pulp_pip_editable: false
+    pulp_use_system_wide_pkgs: false
+    pulp_preq_packages:
+    - python3
+    - python3-devel
+    - python3-libselinux  # For ansible itself
+    - gcc                 # For psycopg2
+    - make                # For make docs
+    - libpq-devel         # Renamed/Split version of postgresql-devel
+  become: true
+  tasks:
+    - yum:
+        name: "{{ pulp_preq_packages }}"
+    - lineinfile:
+        path: "{{ pulp_version }}"
+        line: "pulpcore ~= 3.1"
+        create: true
+    - name: Allow use system-wide packages
+      pip:
+        name: pip
+        state: present
+        virtualenv: '{{ pulp_install_dir }}'
+        virtualenv_command: '{{ pulp_python_interpreter }} -m venv'
+        virtualenv_site_packages: yes
+      when: pulp_use_system_wide_pkgs |bool
+
+    - name: Install pulpcore package from PyPI
+      pip:
+        requirements: "{{ pulp_version }}"
+        state: present
+        virtualenv: '{{ pulp_install_dir }}'
+        virtualenv_command: '{{ pulp_python_interpreter }} -m venv'
+      when: pulp_source_dir is not defined
+      register: result
+      # This is a hack. Editable pip installs are always changed, which fails molecule's
+      # idempotence test.
+#      notify: Collect static content
+
+
+    - name: Install pulpcore package from source
+      pip:
+        name: '{{ pulp_source_dir }}'
+        editable: '{{ pulp_pip_editable }}'
+        state: present
+        virtualenv: '{{ pulp_install_dir }}'
+        virtualenv_command: '{{ pulp_python_interpreter }} -m venv'
+      when: pulp_source_dir is defined
+      register: result
+      # This is a hack. Editable pip installs are always changed, which fails molecule's
+      # idempotence test.
+#      changed_when: result.changed and not pulp_pip_editable
+#      notify: Collect static content
+
+    - debug:
+        msg: "{{ result }}"
+
+    - name: Test pip_package_info
+      pip_package_info:
+        clients: "{{ pulp_install_dir }}/bin/pip"
+      register: pip_pkgs
+
+    - set_fact: 
+        pulpcore_version: "{{ pip_pkgs.packages[pulp_install_dir + '/bin/pip'].pulpcore[0].version }}"
+
+    - debug:
+        var: pulpcore_version
+
+    - copy:
+        content: "pulpcore={{ pulpcore_version }}"
+        dest: "{{ pulp_install_dir }}/constraints.txt"
+
+    - name: Install Pulp plugins via PyPI
+      pip:
+        name: '{{ item.key }}'
+        state: present
+        virtualenv: '{{ pulp_install_dir }}'
+        virtualenv_command: '{{ pulp_python_interpreter }} -m venv'
+        extra_args: "-c {{ pulp_version }}"
+      with_dict: '{{ pulp_install_plugins }}'
+      when: pulp_install_plugins[item.key].source_dir is undefined
+#      notify: Collect static content
+
+    - name: Install Pulp plugins from source
+      pip:
+        name: '{{ item.value.source_dir }}'
+        editable: '{{ pulp_pip_editable }}'
+        state: present
+        virtualenv: '{{ pulp_install_dir }}'
+        virtualenv_command: '{{ pulp_python_interpreter }} -m venv'
+        extra_args: "-c {{ pulp_version }}"
+      with_dict: '{{ pulp_install_plugins }}'
+      when: pulp_install_plugins[item.key].source_dir is defined
+      # This is a hack. Editable pip installs are always changed, which fails molecule's
+      # idempotence test.
+ 
+
+    - lineinfile:
+        path: /usr/local/lib/pulp/pytest_version.txt
+        line: "pytest ~= 2.0"
+        create: true
+ 
+    - name: Install pytest
+      pip:
+        requirements: /usr/local/lib/pulp/pytest_version.txt
+        state: present
+        virtualenv: '{{ pulp_install_dir }}'
+        virtualenv_command: '{{ pulp_python_interpreter }} -m venv'
+
+    - name: Install pytest-cov
+      pip:
+        name: pytest-cov
+        state: present
+        virtualenv: '{{ pulp_install_dir }}'
+        virtualenv_command: '{{ pulp_python_interpreter }} -m venv'
+        extra_args: "-c /usr/local/lib/pulp/pytest_version.txt"
