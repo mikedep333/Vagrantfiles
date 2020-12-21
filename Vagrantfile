@@ -15,7 +15,24 @@ Vagrant.configure("2") do |config|
     a.vm.box = "centos/7"
   end
 
+  config.vm.define "centos8" do |a|
+    a.vm.box = "centos/8"
+  end
+
+  config.vm.define "generic-centos8" do |a|
+    a.vm.box = "generic/centos8"
+  end
+
+  config.vm.define "centos8-stream" do |a|
+    a.vm.box = "centos/8-stream"
+    a.vm.box_url= "https://cloud.centos.org/centos/8-stream/x86_64/images/CentOS-Stream-Vagrant-8-20200113.0.x86_64.vagrant-libvirt.box"
+  end
+
   config.vm.define "xenial" do |a|
     a.vm.box = "generic/ubuntu1604"
+  end
+
+  config.vm.define "focal" do |a|
+    a.vm.box = "generic/ubuntu2004"
   end
 end
